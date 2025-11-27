@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Then, add the rest of the project source code and install it
 # Installing separately from its dependencies allows optimal layer caching
-ADD . /app
+COPY --chown=app:app . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable
 
@@ -27,9 +27,19 @@ FROM python:3.13-slim-bookworm
 
 WORKDIR /app
 
+# Create a non-root user and ensure /app is owned by that user before copying files
+RUN groupadd -r app && useradd -r -g app -d /app -s /usr/sbin/nologin -c "App User" app \
+    && mkdir -p /app && chown app:app /app
+
 COPY --from=uv --chown=app:app /app/.venv /app/.venv
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
+
+# Basic healthcheck: ensure the CLI executable exists and is executable
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD ["sh", "-c", "test -x /app/.venv/bin/mcp-youtube-transcript || exit 1"]
+
+# Run as non-root user
+USER app
 
 ENTRYPOINT ["mcp-youtube-transcript"]
